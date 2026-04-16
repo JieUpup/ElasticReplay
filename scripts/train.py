@@ -30,15 +30,39 @@ def collate_fn(batch):
     return x_seq, adj_seq, y, task_id
 
 
-def make_loader(ds, batch_size=32, shuffle=False):
+def make_loader(ds, batch_size=32, shuffle=False, num_workers=0):
+    use_pin_memory = torch.cuda.is_available()
     return DataLoader(
         ds,
         batch_size=batch_size,
         shuffle=shuffle,
         collate_fn=collate_fn,
-        num_workers=0,
-        pin_memory=True,
+        num_workers=num_workers,
+        pin_memory=use_pin_memory,
     )
+
+
+def resolve_device(device_arg):
+    if device_arg == "cuda":
+        if not torch.cuda.is_available():
+            raise RuntimeError("CUDA requested but is not available in this environment.")
+        return torch.device("cuda")
+
+    if device_arg == "mps":
+        if not torch.backends.mps.is_available():
+            raise RuntimeError("MPS requested but is not available in this environment.")
+        return torch.device("mps")
+
+    if device_arg == "cpu":
+        return torch.device("cpu")
+
+    if torch.cuda.is_available():
+        return torch.device("cuda")
+
+    if torch.backends.mps.is_available():
+        return torch.device("mps")
+
+    return torch.device("cpu")
 
 
 @torch.no_grad()
@@ -154,8 +178,11 @@ def parse_args():
 
     parser.add_argument("--hidden_dim", type=int, default=128)
     parser.add_argument("--batch_size", type=int, default=32)
+    parser.add_argument("--num_workers", type=int, default=0)
     parser.add_argument("--epochs", type=int, default=20)
     parser.add_argument("--lr", type=float, default=1e-3)
+    parser.add_argument("--device", type=str, default="auto",
+                        choices=["auto", "cuda", "mps", "cpu"])
 
     parser.add_argument("--buffer_size", type=int, default=500)
     parser.add_argument("--replay_batch_size", type=int, default=32)
@@ -172,7 +199,7 @@ def main():
     args = parse_args()
     set_seed(args.seed)
 
-    device = "cuda" if torch.cuda.is_available() else "cpu"
+    device = resolve_device(args.device)
     print(f"device={device}")
     print(f"method={args.method}")
     print(f"seed={args.seed}")
@@ -195,14 +222,21 @@ def main():
    # streams = build_task_stream(dataset, num_tasks=args.num_tasks)
    # train_loaders = [make_loader(ds, batch_size=args.batch_size, shuffle=True) for ds in streams]
    # test_loaders = [make_loader(ds, batch_size=args.batch_size, shuffle=False) for ds in streams]
-   train_streams, test_streams = build_task_stream_with_splits(
-           dataset,
-           num_tasks=args.num_tasks,
-           train_ratio=0.8,
-           )
-   train_loaders = [make_loader(ds, batch_size=args.batch_size, shuffle=True) for ds in train_streams]
-   test_loaders = [make_loader(ds, batch_size=args.batch_size, shuffle=False) for ds in test_streams]
-   model = SimpleDynamicBrainNet(
+    train_streams, test_streams = build_task_stream_with_splits(
+        dataset,
+        num_tasks=args.num_tasks,
+        train_ratio=0.8,
+    )
+    train_loaders = [
+        make_loader(ds, batch_size=args.batch_size, shuffle=True, num_workers=args.num_workers)
+        for ds in train_streams
+    ]
+    test_loaders = [
+        make_loader(ds, batch_size=args.batch_size, shuffle=False, num_workers=args.num_workers)
+        for ds in test_streams
+    ]
+
+    model = SimpleDynamicBrainNet(
         node_dim=args.F,
         hidden_dim=args.hidden_dim,
         num_classes=args.num_classes,
@@ -217,7 +251,7 @@ def main():
     elif args.method == "selective_replay":
         replay_buffer = SelectiveReplayBuffer(capacity=args.buffer_size)
 
-    num_tasks = len(streams)
+    num_tasks = len(train_streams)
     acc_matrix = [[0.0 for _ in range(num_tasks)] for _ in range(num_tasks)]
     loss_matrix = [[0.0 for _ in range(num_tasks)] for _ in range(num_tasks)]
     train_histories = {}

@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -e
 
+PYTHON_BIN="${PYTHON_BIN:-.venv/bin/python}"
+DEVICE="${DEVICE:-auto}"
+NUM_WORKERS="${NUM_WORKERS:-0}"
+
 SEEDS=(42 43 44)
 
 METHODS=(
@@ -15,8 +19,10 @@ for seed in "${SEEDS[@]}"; do
     echo "Running method=${method}, seed=${seed}"
     echo "========================================"
 
-    python scripts/train.py \
+    "${PYTHON_BIN}" scripts/train.py \
       --method "${method}" \
+      --device "${DEVICE}" \
+      --num_workers "${NUM_WORKERS}" \
       --seed "${seed}" \
       --num_tasks 5 \
       --samples_per_task 1000 \

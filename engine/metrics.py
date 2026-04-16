@@ -18,6 +18,6 @@ def forgetting(acc_matrix):
     final_task = K - 1
     for j in range(final_task):
         best_prev = max(acc_matrix[i][j] for i in range(j, final_task))
-        vals.append(best_prev - acc_matrix[final_task][j])
+        vals.append(max(0.0, best_prev - acc_matrix[final_task][j]))
 
     return float(np.mean(vals)) if vals else 0.0
