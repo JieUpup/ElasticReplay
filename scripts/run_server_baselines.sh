@@ -5,6 +5,15 @@ PYTHON_BIN="${PYTHON_BIN:-.venv/bin/python}"
 NUM_WORKERS="${NUM_WORKERS:-4}"
 DEVICE="${DEVICE:-cuda}"
 CUDA_DEVICE="${CUDA_DEVICE:-0}"
+VISIBLE_GPUS="${CUDA_DEVICE}"
+IFS=',' read -r -a GPU_LIST <<< "${VISIBLE_GPUS}"
+DEVICE_IDS=""
+for idx in "${!GPU_LIST[@]}"; do
+  if [ -n "${DEVICE_IDS}" ]; then
+    DEVICE_IDS="${DEVICE_IDS},"
+  fi
+  DEVICE_IDS="${DEVICE_IDS}${idx}"
+done
 
 if [ ! -x "${PYTHON_BIN}" ]; then
   echo "Python executable not found: ${PYTHON_BIN}" >&2
@@ -24,5 +33,6 @@ CUDA_VISIBLE_DEVICES="${CUDA_DEVICE}" \
 PYTHONPYCACHEPREFIX="${PWD}/.pycache" \
 PYTHON_BIN="${PYTHON_BIN}" \
 DEVICE="${DEVICE}" \
+DEVICE_IDS="${DEVICE_IDS}" \
 NUM_WORKERS="${NUM_WORKERS}" \
 bash run_baselines.sh

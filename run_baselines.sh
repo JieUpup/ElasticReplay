@@ -4,6 +4,7 @@ set -e
 PYTHON_BIN="${PYTHON_BIN:-.venv/bin/python}"
 DEVICE="${DEVICE:-auto}"
 NUM_WORKERS="${NUM_WORKERS:-0}"
+DEVICE_IDS="${DEVICE_IDS:-}"
 
 SEEDS=(42 43 44)
 
@@ -22,6 +23,7 @@ for seed in "${SEEDS[@]}"; do
     "${PYTHON_BIN}" scripts/train.py \
       --method "${method}" \
       --device "${DEVICE}" \
+      --device_ids "${DEVICE_IDS}" \
       --num_workers "${NUM_WORKERS}" \
       --seed "${seed}" \
       --num_tasks 5 \

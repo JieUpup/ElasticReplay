@@ -65,6 +65,44 @@ def resolve_device(device_arg):
     return torch.device("cpu")
 
 
+def parse_device_ids(device_ids_arg):
+    if not device_ids_arg:
+        return []
+
+    device_ids = []
+    for item in device_ids_arg.split(","):
+        item = item.strip()
+        if not item:
+            continue
+        device_ids.append(int(item))
+    return device_ids
+
+
+def build_model(args, device):
+    model = SimpleDynamicBrainNet(
+        node_dim=args.F,
+        hidden_dim=args.hidden_dim,
+        num_classes=args.num_classes,
+    ).to(device)
+
+    multi_gpu_ids = []
+    if device.type == "cuda":
+        multi_gpu_ids = parse_device_ids(args.device_ids)
+        if multi_gpu_ids:
+            visible_gpu_count = torch.cuda.device_count()
+            invalid_ids = [idx for idx in multi_gpu_ids if idx < 0 or idx >= visible_gpu_count]
+            if invalid_ids:
+                raise RuntimeError(
+                    f"Invalid CUDA device ids {invalid_ids}. "
+                    f"Visible device count is {visible_gpu_count}."
+                )
+            if len(multi_gpu_ids) > 1:
+                print(f"Using DataParallel on CUDA devices {multi_gpu_ids}")
+                model = torch.nn.DataParallel(model, device_ids=multi_gpu_ids)
+
+    return model, multi_gpu_ids
+
+
 @torch.no_grad()
 def evaluate(model, loader, device):
     model.eval()
@@ -183,6 +221,8 @@ def parse_args():
     parser.add_argument("--lr", type=float, default=1e-3)
     parser.add_argument("--device", type=str, default="auto",
                         choices=["auto", "cuda", "mps", "cpu"])
+    parser.add_argument("--device_ids", type=str, default="",
+                        help="Comma-separated CUDA device ids for single-job multi-GPU, e.g. 0,1,2,3")
 
     parser.add_argument("--buffer_size", type=int, default=500)
     parser.add_argument("--replay_batch_size", type=int, default=32)
@@ -236,11 +276,9 @@ def main():
         for ds in test_streams
     ]
 
-    model = SimpleDynamicBrainNet(
-        node_dim=args.F,
-        hidden_dim=args.hidden_dim,
-        num_classes=args.num_classes,
-    ).to(device)
+    model, multi_gpu_ids = build_model(args, device)
+    if multi_gpu_ids:
+        print(f"device_ids={multi_gpu_ids}")
 
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
     criterion = torch.nn.CrossEntropyLoss()
