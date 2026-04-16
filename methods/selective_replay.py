@@ -34,6 +34,7 @@ def collate_selective_samples(samples, device):
 
 @torch.no_grad()
 def select_topk_windows(model, x_seq, adj_seq, y, task_id, topk=2, device="cuda"):
+    was_training = model.training
     model.eval()
     bs, T = x_seq.size(0), x_seq.size(1)
     selected = []
@@ -59,5 +60,8 @@ def select_topk_windows(model, x_seq, adj_seq, y, task_id, topk=2, device="cuda"
                 task_id[i].detach().cpu(),
             )
             selected.append(item)
+
+    if was_training:
+        model.train()
 
     return selected
